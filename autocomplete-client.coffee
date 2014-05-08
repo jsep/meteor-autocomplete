@@ -9,7 +9,10 @@ validateRule = (rule) ->
 getRegExp = (rule) ->
   if rule.token
     # Expressions for the range from the last word break to the current cursor position
-    new RegExp('(^|\\b|\\s)' + rule.token + '([\\w.]*)$')
+    # Append 'space' char if a custom separator char is provided
+    char = if rule.separator then " " else ""
+    expr = '(^|\\b|\\s' + (if rule.separator then "|#{rule.separator})" else ")")
+    new RegExp(expr + rule.token + '([\\w' + char + ']*)$')
   else
     # Whole-field behavior - word characters or spaces
     new RegExp('(^)(.*)$')
@@ -33,8 +36,7 @@ getFindParams = (rule, filter, limit) ->
     _.extend(selector, rule.selector(filter))
   else
     selector[rule.field] = {
-      $regex: if rule.matchAll then filter else "^" + filter
-      # default is case insensitive search - empty string is not the same as undefined!
+      $regex: if rule.matchAll then filter else "^" + filter      # default is case insensitive search - empty string is not the same as undefined!
       $options: if (typeof rule.options is 'undefined') then 'i' else rule.options
     }
 
@@ -45,7 +47,6 @@ getField = (obj, str) ->
   return obj
 
 class @AutoComplete
-
   @KEYS: [
     40, # DOWN
     38, # UP
@@ -70,7 +71,7 @@ class @AutoComplete
     @ruleDep = new Deps.Dependency
     @filterDep = new Deps.Dependency
     @loadingDep = new Deps.Dependency
-    
+
     # autosubscribe to the record set published by the server based on the filter
     # This will tear down server subscriptions when they are no longer being used.
     @sub = null
@@ -96,7 +97,7 @@ class @AutoComplete
   teardown: ->
     # Stop the reactive computation we started for this autocomplete instance
     @comp.stop()
-    # console.log "cleaned up the computation"
+  # console.log "cleaned up the computation"
 
   # reactive getters and setters for @filter and the currently matched rule
   matchedRule: ->
@@ -140,7 +141,7 @@ class @AutoComplete
     while i < @expressions.length
       matches = val.match(@expressions[i])
 
-      # matching -> not matching
+      # matching -> not matching      
       if not matches and @matched is i
         @setMatchedRule(-1)
         breakLoop = true
@@ -233,7 +234,6 @@ class @AutoComplete
 
     @processSelection(doc, @rules[@matched])
     return true
-
   processSelection: (doc, rule) ->
     replacement = getField(doc, rule.field)
 
@@ -255,10 +255,16 @@ class @AutoComplete
   replace: (replacement) ->
     startpos = @element.selectionStart
     fullStuff = @getText()
+    rule = @rules[@matched]
+
     val = fullStuff.substring(0, startpos)
-    val = val.replace(@expressions[@matched], "$1" + @rules[@matched].token + replacement)
+    val = val.replace(@expressions[@matched], "$1" + rule.token + replacement)
+
     posfix = fullStuff.substring(startpos, fullStuff.length)
-    separator = (if posfix.match(/^\s/) then "" else " ")
+
+    regex = new RegExp("^" + rule.separator || "\\s")
+    separator = (if posfix.match(regex) then "" else rule.separator || " ")
+
     finalFight = val + separator + posfix
     @setText finalFight
 
@@ -339,3 +345,4 @@ AutocompleteTest =
   records: AutoCompleteRecords
   getRegExp: getRegExp
   getFindParams: getFindParams
+
